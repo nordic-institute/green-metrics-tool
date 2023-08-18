@@ -75,6 +75,10 @@ const allow_group_select_checkboxes = (checkbox_wrapper_id) => {
         return;
     }
 
+    const table_body = document.querySelector('#projects-table tbody');
+    let last_uri = null
+    let table_body_inner = null
+
     api_data.data.forEach(el => {
 
         const id = el[0]
@@ -90,18 +94,14 @@ const allow_group_select_checkboxes = (checkbox_wrapper_id) => {
         const commit_hash_short = commit_hash == null ? null : `${commit_hash.substr(0,3)}...${commit_hash.substr(-3,3)}`
 
 
+        if (uri !== last_uri) {
+            last_uri = uri
+            let uri_link = replaceRepoIcon(uri);
 
-        let uri_link = replaceRepoIcon(uri);
-
-        if (uri.startsWith("http")) {
-            uri_link = `${uri_link} <a href="${uri}"><i class="icon external alternate"></i></a>`;
-        }
-
-
-        // insert new accordion row if repository not known
-        let td_node = document.querySelector(`td[data-uri='${uri}']`)
-        if (td_node == null || td_node == undefined) {
-            let row = document.querySelector('#projects-table tbody').insertRow()
+            if (uri.startsWith("http")) {
+                uri_link = `${uri_link} <a href="${uri}"><i class="icon external alternate"></i></a>`;
+            }
+            const row = table_body.insertRow()
             row.innerHTML = `
                 <td data-uri="${uri}">
                     <div class="ui accordion" style="width: 100%;">
@@ -112,7 +112,7 @@ const allow_group_select_checkboxes = (checkbox_wrapper_id) => {
                       </div>
                     </div>
                 </td>`;
-            let content = document.querySelector(`#projects-table td[data-uri='${uri}'] div.content`);
+            const content = table_body.querySelector(`td[data-uri='${uri}'] div.content`);
             content.innerHTML = `
                 <table class="ui table">
                     <thead class="full-width">
@@ -128,12 +128,14 @@ const allow_group_select_checkboxes = (checkbox_wrapper_id) => {
                     </thead>
                     <tbody></tbody>
                 </table>`;
+            table_body_inner = table_body.querySelector(`td[data-uri='${uri}'] div.content table tbody`)
         }
+
 
         if(end_measurement == null) name = `${name} (no data yet 🔥)`;
         if(invalid_project != null) name = `${name} <span class="ui yellow horizontal label" title="${invalid_project}">invalidated</span>`;
 
-        let inner_row = document.querySelector(`#projects-table td[data-uri='${uri}'] div.content table tbody`).insertRow();
+        const inner_row = table_body_inner.insertRow();
 
         inner_row.innerHTML = `
             <td class="td-index"><a href="/stats.html?id=${id}">${name}</a></td>
