@@ -141,11 +141,11 @@ async def get_machines():
 
 # A route to return all of the available entries in our catalog.
 @app.get('/v1/projects')
-async def get_projects(repo: str, filename: str):
+async def get_projects(repo: str, filename: str, sort:str='uri', limit:int=0):
     query = """
-            SELECT a.id, a.name, a.uri, COALESCE(a.branch, 'main / master'), a.end_measurement, a.last_run, a.invalid_project, a.filename, b.description, a.commit_hash
-            FROM projects as a
-            LEFT JOIN machines as b on a.machine_id = b.id
+            SELECT p.id, p.name, p.uri, COALESCE(p.branch, 'main / master'), p.end_measurement, p.last_run, p.invalid_project, p.filename, m.description, p.commit_hash
+            FROM projects as p
+            LEFT JOIN machines as m on p.machine_id = m.id
             WHERE 1=1
             """
     params = []
@@ -160,9 +160,17 @@ async def get_projects(repo: str, filename: str):
         query = f"{query} AND a.uri LIKE %s \n"
         params.append(f"%{repo}%")
 
-    query = f"{query} ORDER BY a.created_at DESC  -- important to order here, the charting library in JS cannot do that automatically!"
+    if sort == 'uri':
+        query = f"{query} ORDER BY p.uri ASC"
+    else:
+        query = f"{query} ORDER BY p.last_run ASC"
 
-    data = DB().fetch_all(query, params=tuple(params))
+    if(limit >= 0)
+        query = f"{query} LIMIT %s"
+        params.add(limit)
+
+
+    data = DB().fetch_all(query, params=params)
     if data is None or data == []:
         return Response(status_code=204) # No-Content
 

@@ -76,6 +76,7 @@ const allow_group_select_checkboxes = (checkbox_wrapper_id) => {
     }
 
     const table_body = document.querySelector('#projects-table tbody');
+    const last_runs_body = document.querySelector('#last-runs-table tbody');
     let last_uri = null
     let table_body_inner = null
 
@@ -92,6 +93,18 @@ const allow_group_select_checkboxes = (checkbox_wrapper_id) => {
         const machine = el[8]
         const commit_hash = el[9]
         const commit_hash_short = commit_hash == null ? null : `${commit_hash.substr(0,3)}...${commit_hash.substr(-3,3)}`
+
+        // const xrow = last_runs_body.insertRow()
+        // xrow.innerHTML = `
+        //     <td data-uri="${uri}">
+        //         <div class="ui accordion" style="width: 100%;">
+        //           <div class="title">
+        //             <i class="dropdown icon"></i> ${uri}
+        //           </div>
+        //           <div class="content">
+        //           </div>
+        //         </div>
+        //     </td>`;
 
 
         if (uri !== last_uri) {
@@ -135,16 +148,16 @@ const allow_group_select_checkboxes = (checkbox_wrapper_id) => {
         if(end_measurement == null) name = `${name} (no data yet 🔥)`;
         if(invalid_project != null) name = `${name} <span class="ui yellow horizontal label" title="${invalid_project}">invalidated</span>`;
 
-        const inner_row = table_body_inner.insertRow();
+        // const inner_row = table_body_inner.insertRow();
 
-        inner_row.innerHTML = `
-            <td class="td-index"><a href="/stats.html?id=${id}">${name}</a></td>
-            <td class="td-index" title="${filename}">${filename}</td>
-            <td class="td-index">${machine}</td>
-            <td class="td-index">${branch}</td>
-            <td class="td-index" title="${commit_hash}">${commit_hash_short}</td>
-            <td class="td-index"><span title="${last_run}">${dateToYMD(new Date(last_run))}</span></td>
-            <td><input type="checkbox" value="${id}" name="chbx-proj"/>&nbsp;</td>`;
+        // inner_row.innerHTML = `
+        //     <td class="td-index"><a href="/stats.html?id=${id}">${name}</a></td>
+        //     <td class="td-index" title="${filename}">${filename}</td>
+        //     <td class="td-index">${machine}</td>
+        //     <td class="td-index">${branch}</td>
+        //     <td class="td-index" title="${commit_hash}">${commit_hash_short}</td>
+        //     <td class="td-index"><span title="${last_run}">${dateToYMD(new Date(last_run))}</span></td>
+        //     <td><input type="checkbox" value="${id}" name="chbx-proj"/>&nbsp;</td>`;
     });
 
 
