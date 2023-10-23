@@ -58,40 +58,30 @@
             <i class="info circle icon"></i>
             <div class="content">
                 <p> Here you can see the energy measurements of the associated CI pipeline. </p>
-                <p> You can use the date picker or the legend (CPU) to filter which results are displayed on the chart. The energy measurement of a pipeline tends to be very strongly dependent on the CPU of the machine, so it is strongly recommended that you do any statistical analysis on a per CPU basis.
+                <p> You can use the date picker or the legend (label) to filter which results are displayed on the chart. The energy measurement of a pipeline tends to be very strongly dependent on the CPU of the machine, so it is strongly recommended that you do any statistical analysis on a per CPU basis.
                 </p>
                 <p>The Stats Table will only display stats for the data shown in the chart, and exclude filtered data. It shows the stats for the full runs, and additionally for each label specifically.</p>
             </div>
         </div>
-        <div class="ui form">
-            <div class="three fields">
-                <div class="field">
-                    <label>Start date (inclusive)</label>
-                    <div class="ui calendar" id="rangestart">
-                        <div class="ui input left icon">
-                            <i class="calendar icon"></i>
-                            <input type="text" placeholder="Start">
-                        </div>
-                    </div>
-                </div>
-                <div class="field">
-                    <label>End date (exclusive)</label>
-                    <div class="ui calendar" id="rangeend">
-                        <div class="ui input left icon">
-                            <i class="calendar icon"></i>
-                            <input type="text" placeholder="End">
-                        </div>
-                    </div>
-                </div>
-                <div class="field">
-                    <label>&nbsp;</label>
-                    <button class="positive ui button" id="submit">Refresh Chart</button>
-                </div>
-            </div>
+        <div id="chart-types" class="ui top attached tabular menu">
+            <a class="active item" data-tab="energy">Energy</a>
+            <a class="item" data-tab="duration">Duration</a>
+            <a class="item" data-tab="cpu_util">CPU Utilization</a>
+            <select id="cpu-dropdown">
+                <option value="all-cpus">All CPU's</option>
+            </select>
         </div>
 
-        <div class="ui segment" id="chart-container">
-
+        <div class="ui bottom attached active tab segment runtime-tab"  data-tab="energy">
+            <div id="chart-container">
+                <div class="card statistics-chart-card ui">
+                    <div class="content">
+                        <div class="description">
+                            <div class="statistics-chart" id="ci-runs-chart"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
         <div class = "ui segment" id="stats-container">
             <div class="header"><a class="ui teal ribbon label" href="#">
@@ -125,26 +115,26 @@
             </div>
         </div>
         <div class="ui segment" id="runs-table">
-            <div class="content">
-            </div>
             <div class="header"><a class="ui teal ribbon label" href="#">
                     <h3 data-tooltip="The Measurement Table shows all measurements your pipeline has made, without any filtering.">Measurements Table <i class="question circle icon "></i> </h3>
                 </a></div>
-            <table class="ui sortable celled striped table" id="table">
-            <thead>
-                <tr>
-                    <th>Run ID</th>
-                    <th>Label</th>
-                    <th>Ran At</th>
-                    <th>Energy Value</th>
-                    <th>CPU</th>
-                    <th> <div class="wrap" data-tooltip="Only accurate for runs after Aug 15, 2023. If '--%', you likely have no runs after that date.">Avg. CPU Util. <i class="question circle icon "></i> </div></th>
-                    <th>Duration</th>
-                    <th>Commit Hash</th>
-                </tr>
-            </thead>
-            <tbody id="ci-table"></tbody>
-            </table>
+            <div class="segment">
+                <table class="ui sortable celled striped table" id="table">
+                    <thead>
+                        <tr>
+                            <th>Run ID</th>
+                            <th>Label</th>
+                            <th>Ran At</th>
+                            <th>Energy Value</th>
+                            <th>CPU</th>
+                            <th> <div class="wrap" data-tooltip="Only accurate for runs after Aug 15, 2023. If '--%', you likely have no runs after that date.">Avg. CPU Util. <i class="question circle icon "></i> </div></th>
+                            <th>Duration</th>
+                            <th>Commit Hash</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ci-table"></tbody>
+                </table>
+            </div>
             <div id="pagination-controls" class="ui pagination menu"></div>
         </div>
         <div class="clearing" style="display:block; height: 10px;"></div>
