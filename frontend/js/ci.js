@@ -54,6 +54,7 @@ const calculateStats = (energy_measurements, time_measurements, cpu_util_measure
     };
 };
 
+// rename me, getStaticChartOptions, put zoomOptions into getChartOptions
 const getEChartsOptions = (zoomOptions) => {
     if (zoomOptions == null) {
         zoomOptions = {
@@ -103,12 +104,12 @@ const getEChartsOptions = (zoomOptions) => {
     };
 }
 
-const getChartOptions = (measurements, zoomOptions, value_type = 'energy', legendStatus=null) => {
+const getChartOptions = (measurements, zoomOptions, chart_type = 'energy', legendStatus=null) => {
     const options = getEChartsOptions(zoomOptions);
-    if (value_type == 'cpu_util') {
+    if (chart_type == 'cpu_util') {
         options.title.text = `Workflow Cpu Utilization used per Run[%]`;
         options.yAxis.name = "CPU Utilization [%]"
-    } else if (value_type == 'duration') {
+    } else if (chart_type == 'duration') {
         options.title.text = `Workflow Duration per Run [s]`;
         options.yAxis.name = "Duration [s]"
     } else {
@@ -117,56 +118,36 @@ const getChartOptions = (measurements, zoomOptions, value_type = 'energy', legen
     }
 
     const legend = new Set()
-    const echart_labels = []
+    const tooltip_info = []
     const run_ids = []
-    const labels_used_total = []
+    const labels_used_overall = []
     let run_count = 0
 
+    // Create the data series
     measurements.runs.forEach(run => {
         run_count++
-        run_id = run.run_id
-        run_timestamp = run.timestamp
-        if (!run_ids.includes(run_id)) {
-            options.xAxis.data.push(dateToYMD(new Date(run_timestamp), short=true))
-            run_ids.push(run_id)
+        if (!run_ids.includes(run.run_id)) {
+            options.xAxis.data.push(dateToYMD(new Date(run.timestamp), short=true))
+            run_ids.push(run.run_id)
         }
-        labels_used_in_run = []
-        let commit_hash = run.commit
+
+        let labels_used_in_run = {}
 
         run.labels.forEach(label => {
             let label_name = label.label_name ? label.label_name : 'None'
-            const energy_value = label.energy_value
-            const cpu_util = label.cpu_util ? label.cpu_util : null;
-            const duration = label.duration
-
-            if (value_type == 'cpu_util') {
-                value = cpu_util
-            } else if (value_type == 'duration') {
-                value = duration
+            let value=null;
+            if (chart_type == 'cpu_util') {
+                value = label.cpu_util ? label.cpu_util : null
+            } else if (chart_type == 'duration') {
+                value = label.duration ? label.duration : null
             } else {
-                value = energy_value
+                value = label.energy_value ? label.energy_value : null
             }
 
-            unit = label.energy_unit
-            timestamp = label.timestamp
-            time = dateToYMD(new Date(label.timestamp))//, short=true)
-
-
-            // If label has not been seen in labels_used_total, create a new series
-            // values are 0 filled to run_count-1
-
-            // if label has not been seen in labels_used_in_run, 
-            // label_hit_count = 1
-            // find correct series, add value
-
-            // if label has been seen in labels_used_in_run
-            // label_hit_count++
-
-
-            let series_values = new Array(run_count-1).fill(0); // hack at run_count = 0, but works
-            series_values.push(value)
-            labels_used_total.push(label_name)
-            if (!labels_used_in_run.includes(label_name)) {
+            //if label_name is not in labels_used_overall, create new series, and zero fill
+            if(!labels_used_overall.includes(label_name)) {
+                let series_values = new Array(run_count-1).fill(0)
+                series_values.push(value)
                 options.series.push({
                     type: 'bar',
                     smooth: true,
@@ -178,56 +159,126 @@ const getChartOptions = (measurements, zoomOptions, value_type = 'energy', legen
                         borderColor: '#000000',
                       },
                 })
+                tooltip_info.push({
+                    label: label_name,
+                    energy_values: new Array(run_count-1).fill(0).concat(label.energy_value),
+                    unit: label.energy_unit,
+                    cpu: new Array(run_count-1).fill(0).concat(label.cpu_model),
+                    run_ids: new Array(run_count-1).fill(0).concat(run.run_id),
+                    cpu_utils: new Array(run_count-1).fill(0).concat(label.cpu_util),
+                    durations: new Array(run_count-1).fill(0).concat(label.duration),
+                    commit_hashs: new Array(run_count-1).fill(0).concat(run.commit),
+                    timestamps: new Array(run_count-1).fill(0).concat(label.timestamp),
+                });
+                labels_used_overall.push(label_name)
+                labels_used_in_run[label_name] = 1
                 legend.add(label_name)
-            } else {
-                // if label_name is in labels_used_in_run, find the index of the series with the same name and push the value
-                options.series.forEach(series => {
-                    if (series.name == label_name) {
-                        series.data.push(value)
-                    }
-                })
             }
+            // if its not a new label, but new in this run, find the first series of this name and push the value
+            else if (!labels_used_in_run.hasOwnProperty(label_name)) {
+                let matchingSeries = options.series.find(series => series.name === label_name)
+                matchingSeries.data.push(value)
+                let matchingTooltip = tooltip_info.find(tooltip => tooltip.label === label_name)
+                matchingTooltip.energy_values.push(label.energy_value)
+                matchingTooltip.cpu.push(label.cpu_model)
+                matchingTooltip.run_ids.push(run.run_id)
+                matchingTooltip.cpu_utils.push(label.cpu_util)
+                matchingTooltip.durations.push(label.duration)
+                matchingTooltip.commit_hashs.push(run.commit)
+                matchingTooltip.timestamps.push(label.timestamp)
+                labels_used_in_run[label_name] = 1
+            }
+            // else it must be a label already used in this run
+            // in which case look for the nth series of this name (n = number of times this label has shown un in this run)
+            // and either push the value or create it if it doesn't exist (0 filled)
+            else {
+                let series_count = 0
+                let matchingSeries = options.series.find(series => {
+                    if (series.name === label_name) {
+                        series_count++;
+                        return series_count === labels_used_in_run[label_name] + 1;
+                    }
+                    return false;
+                });
+                if(matchingSeries){
+                    matchingSeries.data.push(value)
+                    let tooltip_series_count = 0
+                    let matchingTooltip = tooltip_info.find(tooltip => {
+                        if (tooltip.label === label_name) {
+                            tooltip_series_count++;
+                            return tooltip_series_count === labels_used_in_run[label_name] + 1;
+                        }
+                        return false;
+                    });
+                    matchingTooltip.energy_values.push(label.energy_value)
+                    matchingTooltip.cpu.push(label.cpu_model)
+                    matchingTooltip.run_ids.push(run.run_id)
+                    matchingTooltip.cpu_utils.push(label.cpu_util)
+                    matchingTooltip.durations.push(label.duration)
+                    matchingTooltip.commit_hashs.push(run.commit)
+                    matchingTooltip.timestamps.push(label.timestamp)
 
-            // Initialize arrays with zeros
-            const series_run_ids = new Array(run_count).fill(0);
-            const series_cpu_utils = new Array(run_count).fill(0);
-            const series_durations = new Array(run_count).fill(0);
-            const series_commit_hashs = new Array(run_count).fill(0);
-            const series_timestamps = new Array(run_count).fill(0);
-            const series_cpus = [label.cpu_model];
+                    labels_used_in_run[label_name]++
+                }
+                else {
+                    let series_values = new Array(run_count-1).fill(0)
+                    series_values.push(value)
+                    options.series.push({
+                        type: 'bar',
+                        smooth: true,
+                        stack: "0",
+                        name: label_name,
+                        data: series_values,
+                        itemStyle: {
+                            borderWidth: .5,
+                            borderColor: '#000000',
+                          },
+                    })
+                    tooltip_info.push({
+                        label: label_name,
+                        energy_values: new Array(run_count-1).fill(0).concat(label.energy_value),
+                        unit: label.energy_unit,
+                        cpu: new Array(run_count-1).fill(0).concat(label.cpu_model),
+                        run_ids: new Array(run_count-1).fill(0).concat(run.run_id),
+                        cpu_utils: new Array(run_count-1).fill(0).concat(label.cpu_util),
+                        durations: new Array(run_count-1).fill(0).concat(label.duration),
+                        commit_hashs: new Array(run_count-1).fill(0).concat(run.commit),
+                        timestamps: new Array(run_count-1).fill(0).concat(label.timestamp),
+                    });
+                    labels_used_overall.push(label_name)
+                    labels_used_in_run[label_name]++
+                }
+            }
+        });
 
-            // Push values
-            series_run_ids[run_count - 1] = run_id;
-            series_cpu_utils[run_count - 1] = cpu_util;
-            series_durations[run_count - 1] = duration;
-            series_commit_hashs[run_count - 1] = commit_hash;
-            series_timestamps[run_count - 1] = time;
+        // push zeros to all tooltip labels that weren't used
+        const max_length = tooltip_info.reduce((maxLength, tooltip) => Math.max(maxLength, tooltip.energy_values.length), 0);
+        tooltip_info.forEach(tooltip => {
+            while (tooltip.energy_values.length < max_length) {
+                tooltip.energy_values.push(0);
+                tooltip.cpu.push(0);
+                tooltip.run_ids.push(0);
+                tooltip.cpu_utils.push(0);
+                tooltip.durations.push(0);
+                tooltip.commit_hashs.push(0);
+                tooltip.timestamps.push(0);
+            }
+        });
 
-            // Create echart_labels object
-
-            echart_labels.push({
-              values: series_values,
-              unit: unit,
-              cpu: series_cpus,
-              run_ids: series_run_ids,
-              label: label_name,
-              cpu_utils: series_cpu_utils,
-              durations: series_durations,
-              commit_hashs: series_commit_hashs,
-              timestamps: series_timestamps,
-            });
-
-        })
 
         // for each label in the series that was not used during labels_used_in_run, push a 0 value
+        // this also resets labels_used_in_run
         options.series.forEach(series => {
-            if (!labels_used_in_run.includes(series.name)) {
+            // first the labels that weren't used at all
+            if (!labels_used_in_run.hasOwnProperty(series.name)) {
                 series.data.push(0)
             }
+            // then all the duplicate labels that weren't used
+            else { (labels_used_in_run[series.name] <= 0) ? series.data.push(0) : labels_used_in_run[series.name]--; }
         })
-        labels_used_in_run = []
-    })
+    });
 
+    // Set the Legend
     options.legend.data = measurements.labels.map(labelObj => labelObj.name);
     if(legendStatus == null) {
         options.legend.selected = {}
@@ -241,135 +292,18 @@ const getChartOptions = (measurements, zoomOptions, value_type = 'energy', legen
     options.tooltip = {
         trigger: 'item',
         formatter: function (params, ticket, callback) {
-            return `<strong>LABEL: ${escapeString(echart_labels[params.componentIndex].label)}</strong><br>
-            <strong>CPU: ${escapeString(echart_labels[params.componentIndex].cpu[params.dataIndex])}</strong><br>
-            energy used: ${escapeString(echart_labels[params.componentIndex].values[params.dataIndex])} ${escapeString(echart_labels[params.componentIndex].unit)}<br>
-            duration: ${escapeString(echart_labels[params.componentIndex].durations[params.dataIndex])} seconds<br>
-            avg. cpu. utilization: ${escapeString(echart_labels[params.componentIndex].cpu_utils[params.dataIndex])}%<br>
-            run_id: ${escapeString(echart_labels[params.componentIndex].run_ids[params.dataIndex])}<br>
-            timestamp: ${echart_labels[params.componentIndex].timestamps[params.dataIndex]}<br>
-            commit_hash: ${escapeString(echart_labels[params.componentIndex].commit_hashs[params.dataIndex])}<br>
+            return `
+            <strong>Label: ${escapeString(params.seriesName)}</strong><br>
+            <strong>CPU: ${escapeString(tooltip_info[params.componentIndex].cpu[params.dataIndex])}</strong><br>
+            energy used: ${escapeString(tooltip_info[params.componentIndex].energy_values[params.dataIndex])} ${escapeString(tooltip_info[params.componentIndex].unit)}<br>
+            duration: ${escapeString(tooltip_info[params.componentIndex].durations[params.dataIndex])} seconds<br>
+            avg. cpu. utilization: ${escapeString(tooltip_info[params.componentIndex].cpu_utils[params.dataIndex])}%<br>
+            run_id: ${escapeString(tooltip_info[params.componentIndex].run_ids[params.dataIndex])}<br>
+            timestamp: ${tooltip_info[params.componentIndex].timestamps[params.dataIndex]}<br>
+            commit_hash: ${escapeString(tooltip_info[params.componentIndex].commit_hashs[params.dataIndex])}<br>
             `;
         }
     };
-
-/*    console.log("Options:")
-    console.log(options)*/
-    return options
-}
-
-const getChartOptions_2 = (measurements, zoomOptions, chart_type = 'energy', legendStatus=null) => {
-    const options = getEChartsOptions(zoomOptions);
-    if (chart_type == 'cpu_util') {
-        options.title.text = `Workflow Cpu Utilization used per Run[%]`;
-        options.yAxis.name = "CPU Utilization [%]"
-    } else if (chart_type == 'duration') {
-        options.title.text = `Workflow Duration per Run [s]`;
-        options.yAxis.name = "Duration [s]"
-    } else {
-        options.title.text = `Workflow Energy Cost per Run [mJ]`;
-        options.yAxis.name = "Run Energy [mJ]"
-    }chart_type
-
-    const legend = new Set()
-    const echart_labels = []
-    const run_ids = []
-    const labels_used_overall = []
-    let run_count = 0
-
-    // Create the data series
-    measurements.runs.forEach(run => {
-        run_count++
-        if (!run_ids.includes(run.run_id)) {
-            options.xAxis.data.push(dateToYMD(new Date(run.timestamp), short=true))
-            run_ids.push(run.run_id)
-        }
-
-        const labels_used_in_run = {}
-
-        run.labels.forEach(label => {
-            let label_name = label.label_name ? label.label_name : 'None'
-            let value=null;
-            if (chart_type == 'cpu_util') {
-                value = label.cpu_util ? label.cpu_util : null
-            } else if (chart_type == 'duration') {
-                value = label.duration
-            } else {
-                value = label.energy_value
-            }
-
-            //if label_name is not in labels_used_overall, create new series, and zero fill
-            if(!labels_used_overall.includes(label_name)) {
-                let series_values = new Array(run_count-1).fill(0); // hack at run_count = 0, but works
-                series_values.push(value)
-                options.series.push({
-                    type: 'bar',
-                    smooth: true,
-                    stack: "0",
-                    name: label_name,
-                    data: series_values,
-                    itemStyle: {
-                        borderWidth: .5,
-                        borderColor: '#000000',
-                      },
-                })
-                // add label to labels_used_overall
-                labels_used_overall.push(label_name)
-                labels_used_in_run[label_name] = 1
-                legend.add(label_name)
-            }
-            // if label_name is in labels_used_in_run, find the index of the series with the same name and push the value
-            else if (!labels_used_in_run.hasOwnProperty(label_name)) {
-                const matchingSeries = options.series.find(series => series.name === label_name);
-                matchingSeries.data.push(value)
-                labels_used_in_run[label_name] = 1
-            }
-            // else it is a label used multiple times in the same run
-            // so either find or make a new series, zero filled
-            else {
-                let count = 0
-                const matchingSeries = options.series.find(series => {
-                    if (series.name === label_name) {
-                        count++;
-                        return count === labels_used_in_run[label_name] + 1;
-                    }
-                    return false;
-                });
-                if(matchingSeries){
-                    matchingSeries.data.push(value)
-                    labels_used_in_run[label_name]++
-                }
-                else {
-                    let series_values = new Array(run_count-1).fill(0); // hack at run_count = 0, but works
-                    series_values.push(value)
-                    options.series.push({
-                        type: 'bar',
-                        smooth: true,
-                        stack: "0",
-                        name: label_name,
-                        data: series_values,
-                        itemStyle: {
-                            borderWidth: .5,
-                            borderColor: '#000000',
-                          },
-                    })
-                    labels_used_overall.push(label_name)
-                    labels_used_in_run[label_name]++
-                }
-            }
-        });
-    });
-
-    // Set the Legend
-    options.legend.data = measurements.labels.map(labelObj => labelObj.name);
-    if(legendStatus == null) {
-        options.legend.selected = {}
-        options.legend.data.forEach(label => {
-            options.legend.selected[label] = true
-        })
-    } else {
-        options.legend.selected = legendStatus
-    }
     console.log("Options:")
     console.log(options)
     return options
@@ -395,15 +329,15 @@ const displayStatsTable = (measurements) => {
 
     const full_run_stats_node = document.createElement("tr")
 
-    // new
     measurements.runs.forEach(run => {
         run.stats = calculateStats(run.labels.map(label => label.energy_value), run.labels.map(label => label.duration), run.labels.map(label => label.cpu_util))
     });
     measurements.labels.forEach(label => {
-        label.stats = calculateStats(label.energy_values, label.duration_values, label.cpu_util_values)
+        label.stats = calculateStats(label.energy_values.map(x => x.value), label.duration_values.map(x => x.value), label.cpu_util_values.map(x => x.value))
     });
     const full_run_stats = calculateStats(measurements.runs.map(run => run.stats.energy.average), measurements.runs.map(run => run.stats.time.average), measurements.runs.map(run => run.stats.cpu_util.average))
-    
+    console.log("displayStatsTable measurements.labels")
+    console.log(measurements.labels)
     full_run_stats_node.innerHTML += `
                             <td class="td-index" data-tooltip="Stats for the series of runs (labels aggregated for each pipeline run)">Full Run <i class="question circle icon small"></i> </td>
                             <td class="td-index">${formatLongValue(full_run_stats.energy.average)} mJ</td>
@@ -421,7 +355,6 @@ const displayStatsTable = (measurements) => {
 
     measurements.labels.forEach(label => {
         const label_stats = label.stats
-        //const label_stats = calculateStats(labelsArray[label].energy, labelsArray[label].time, labelsArray[label].cpu_util)
         const label_stats_node = document.createElement("tr")
         label_stats_node.innerHTML += `
                                         <td class="td-index" data-tooltip="stats for the series of steps represented by the ${label.name} label">${label.name}</td>
@@ -563,9 +496,9 @@ const transformMeasurements = (measurements) => {
             result.measurements.labels.push(labelData);
         }
 
-        value !== null && labelData.energy_values.push(value);
-        duration !== null && labelData.duration_values.push(duration);
-        cpu_util !== null && labelData.cpu_util_values.push(cpu_util);
+        value !== null && labelData.energy_values.push({run: run_id, value: value});
+        duration !== null && labelData.duration_values.push({run: run_id, value: duration});
+        cpu_util !== null && labelData.cpu_util_values.push({run: run_id, value: cpu_util});
         labelData.count++;
         
         if (result.measurements.max_labels < runData.labels.length) {
@@ -594,36 +527,11 @@ const transformMeasurements = (measurements) => {
       }
     });
     return result.measurements;
-};
-
-const filterStatsTable = (measurements, selected_legends ,first_run, last_run, cpus) => {
-    measurements.labels.forEach(label => {
-        // if label.name is not in selected_legends, remove label from measurement.labels
-        if (!selected_legends.includes(label.name)) {
-            measurements.labels = measurements.labels.filter(item => item !== label)
-        }
-    });
-
-    measurements.cpus.forEach(cpu => {
-        if (!cpus.includes(cpu)) {
-            measurements.cpus = measurements.cpus.filter(item => item !== cpu)
-        }
-    });
-
-    measurements.runs.forEach(run => {
-        run.labels.forEach(label => {
-            if (!selected_legends.includes(label.label_name) || !cpus.includes(label.cpu_model)) {
-                run.labels = run.labels.filter(item => item !== label)
-            }
-        });
-    });
-
-    return measurements.runs.slice(first_run, last_run + 1);
-
 }
 
-// make a state object called Filters which keeps track of the current xaxis start/end, selected legends, and currently displayed CPU
-// when the user changes the xaxis, selected legends, or CPU, the graph is re-rendered with the new state
+
+    // make a state object called Filters which keeps track of the current xaxis start/end, selected legends, and currently displayed CPU
+    // when the user changes the xaxis, selected legends, or CPU, the graph is re-rendered with the new state
         // Turn this into a Filters state object
         // This keeps track of the start/end zooms, filtered cpus, filterd legends
         // and is applied on top of each gragh render
@@ -635,7 +543,6 @@ class Filter {
     constructor(chart_instance, measurements, legends, cpus) {
         this._chart_instance = chart_instance;
         this._measurements = measurements;
-        this._filteredMeasurements = measurements;
         this._selectedLegends = legends;
         this._selectedCPUs = cpus;
         this._tab = 'energy';
@@ -654,8 +561,9 @@ class Filter {
         this._zoom = zoom;
         this._firstRun = start;
         this._lastRun = end;
-        this.filterMeasurements()
-        displayStatsTable(this._filteredMeasurements);
+        //this.filterMeasurements()
+        let result = this.filterMeasurements()
+        displayStatsTable(result);
     }
 
     setSelectedLegends(selectedLegends){
@@ -666,23 +574,62 @@ class Filter {
 
     setSelectedCPUs(selectedCPUs) {
         this._selectedCPUs = selectedCPUs;
-        this.filterMeasurements()
-        displayStatsTable(this._filteredMeasurements);
+        //this.filterMeasurements()
+        //displayStatsTable(this._filteredMeasurements);
         this.renderGraph();
     }
 
     setTab(tab) {
         this._tab = tab
         //this.filterMeasurements()
-        displayStatsTable(this._filteredMeasurements);
+        //displayStatsTable(this._filteredMeasurements);
         this.renderGraph();
     }
 
+    // Inefficient and currently doesn't work.
+    // it continues to modify the original this._measurements object, which it cannot do
+    // not sure of solution here
     filterMeasurements() {
-        this._filteredMeasurements = this._measurements;
-        this._filteredMeasurements.runs = this._filteredMeasurements.runs.slice(this._firstRun, this._lastRun + 1);
+        console.log("filterMeasurements this._measurements:")
+        console.log(this._measurements)
+        // Create a new object to store the filtered measurements
+        let filteredMeasurements = {
+            runs: [],
+            labels: [],
+        };
 
-        this._filteredMeasurements.runs.forEach(run => {
+        // Filter the runs
+        filteredMeasurements.runs = this._measurements.runs.slice(this._firstRun, this._lastRun + 1);
+
+        // Create a set of label names that are still present in the filtered runs
+        let labelNamesInFilteredRuns = new Set();
+        filteredMeasurements.runs.forEach(run => {
+            run.labels.forEach(run_label => {
+                labelNamesInFilteredRuns.add(run_label.label_name);
+            });
+        });
+
+        // Filter the labels
+        filteredMeasurements.labels = this._measurements.labels.filter(label => {
+            return labelNamesInFilteredRuns.has(label.name);
+        });
+
+        // Create a set of run_ids that are in the filtered runs
+        let runIdsInFilteredRuns = new Set(filteredMeasurements.runs.map(run => run.run_id));
+
+        // Filter the cpu_util_values for each label
+        filteredMeasurements.labels.forEach(label => {
+            label.cpu_util_values = label.cpu_util_values.filter(cpu_util => {
+                return runIdsInFilteredRuns.has(cpu_util.run);
+            });
+        });
+
+        // Calculate the measurement count
+        filteredMeasurements.measurement_count = filteredMeasurements.runs.reduce((acc, run) => acc + run.labels.length, 0);
+
+        return filteredMeasurements;
+
+/*        this._filteredMeasurements.runs.forEach(run => {
             const filteredLabels = run.labels.filter(label => {
                 return (
                     this._selectedLegends.hasOwnProperty(label.label_name) &&
@@ -695,17 +642,17 @@ class Filter {
 
 
         this._filteredMeasurements.labels = this._filteredMeasurements.labels.filter(label => {
-            return this._selectedLegends.includes(label.name);
+            return this._selectedLegends.hasOwnProperty(label.name);
         });
 
         this._filteredMeasurements.cpus = this._filteredMeasurements.cpus.filter(cpu => {
-            return this._selectedCPUs.includes(cpu);
-        });
+            return this._selectedCPUs.hasOwnProperty(cpu);
+        });*/
         
     }
 
-    renderGraph() {
-        const options = getChartOptions(this._filteredMeasurements, this._zoom, this._tab, this._selectedLegends);
+    renderGraph(measurements) {
+        const options = getChartOptions(measurements, this._zoom, this._tab, this._selectedLegends);
         this._chart_instance.clear();
         this._chart_instance.setOption(options);
     }
@@ -848,11 +795,17 @@ $(document).ready((e) => {
             filter.setZoom(newZoom, startValue, endValue)        // re-renders the Stats Table
         });
 
-        // Do CPUS as well
         const cpu_dropdown = document.getElementById("cpu-dropdown");
+        measurements.cpus.forEach(cpu => {
+            const cpu_node = document.createElement("option")
+            cpu_node.value = cpu
+            cpu_node.innerHTML = cpu
+            cpu_dropdown.appendChild(cpu_node)
+        });
+
         cpu_dropdown.addEventListener("change", function () {
-          const selected_cpu = cpu_dropdown.value;
-          // do things here
+            const selected_cpu = cpu_dropdown.value;
+            (selected_cpu == "all-cpus") ? filter.setSelectedCPUs(measurements.cpus) : filter.setSelectedCPUs([selected_cpu])
         });
 
         setTimeout(function(){window.dispatchEvent(new Event('resize'))}, 500);
